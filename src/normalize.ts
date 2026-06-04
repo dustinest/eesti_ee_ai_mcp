@@ -7,7 +7,6 @@ export const EESTI_BASE = "https://eesti.ai";
 // resolved against eesti.ai; the pre-rendered Estonian display strings are dropped.
 export function toAiEvent(doc: UpstreamDoc): AiEvent {
   return {
-    id: doc.id,
     title: doc.title,
     summary: doc.lead_text ?? "",
     startsAt: doc.ds_start_date,

@@ -6,8 +6,26 @@ MCP-klientidele nagu Claude Desktop, Claude Code, Cursor ja ChatGPT. Server
 katab avaliku vportal.ee otsingu-API. Versioonil 1 autentimist ei ole.
 
 See töötab olekuvaba Cloudflare Workerina (tasuta tasandil, ilma Durable
-Objectiteta) ning seda saab soovi korral ka ise Dockeris majutada, kui sa ei
-taha Cloudflare'i kasutada.
+Objectiteta) ning seda saab soovi korral ka ise Dockeri või Podmaniga majutada,
+kui sa ei taha Cloudflare'i kasutada.
+
+_**NB!** kogu see dokumentatsioon on masintõlge inglise keelsest materjalist._
+
+
+## Sisukord
+
+- [Tööriistad](#tööriistad)
+  - [search_events](#search_events)
+  - [upcoming_events](#upcoming_events)
+  - [get_event](#get_event)
+- [Kohalik käivitamine](#kohalik-käivitamine)
+  - [Node'iga](#nodeiga)
+  - [Dockeriga (või Podmaniga)](#dockeriga-või-podmaniga)
+  - [Kohaliku MCP-kliendi ühendamine](#kohaliku-mcp-kliendi-ühendamine)
+- [Juuruta Cloudflare'i](#juuruta-cloudflarei)
+  - [MCP-kliendi ühendamine](#mcp-kliendi-ühendamine)
+- [Märkused](#märkused)
+- [Litsents](#litsents)
 
 ## Tööriistad
 
@@ -22,9 +40,12 @@ Järgmised tulevased sündmused, sorteeritud algusaja järgi.
 Sisend: `{ limit?, langcode?: "et" | "en" }` (limit vaikimisi 10).
 
 ### get_event
-Üksik sündmus tema kanoonilise id järgi.
-Sisend: `{ id }`. Otsib esmalt tulevaste ja seejärel möödunud sündmuste seast
-ning leiab vaste id järgi.
+Üksiku sündmuse täisinfo, mis tõmmatakse otse selle avalikult eesti.ai lehelt
+(kogu kirjeldus, mitte ainult nimekirja sissejuhatus).
+Sisend: `{ url }` — sündmuse `url`, mille tagastavad `search_events` või
+`upcoming_events` (peab olema `https://eesti.ai/...` leht).
+Tagastab `{ title, summary, description, dateTime, location, registration, imageUrl, url }`
+(`registration` sisaldab teadet nagu "Kohad on täitunud", kui üritus on täis; muidu tühi).
 
 Iga tööriist tagastab nii struktureeritud JSON-andmed kui ka lühikese
 tekstilise kokkuvõtte.
@@ -33,17 +54,19 @@ Märkus `langcode` kohta: eesti.ai lõpp-punktid sisaldavad ainult eestikeelseid
 andmeid. `langcode: "en"` on lubatud edasise ühilduvuse jaoks, kuid tagastab
 alati tühja tulemuse, seega kasuta vaikeväärtust `"et"`.
 
-## Eeldused
+## Kohalik käivitamine
 
-- Node.js 20 või uuem (kohalikuks arenduseks), või
-- Docker (ise majutatava konteineri jaoks).
+Käivita server oma masinas kas Node'i või Dockeriga. Mõlemad pakuvad sama MCP
+lõpp-punkti striimitava HTTP kaudu serveri juurest, tavaliselt
+`http://localhost:8787/`.
 
-Lõpp-punkt suhtleb MCP protokolli kaudu üle striimitava HTTP. URL on serveri
-juur, näiteks `http://localhost:8787/`.
+### Node'iga
 
-## Seadistus: käivita kohalikult Node'iga
+#### Eeldused
 
-Samm-sammult:
+- Node.js 20 või uuem.
+
+#### Samm-sammuline juhend
 
 1. Klooni repositoorium ja liigu sinna.
 
@@ -83,37 +106,51 @@ Samm-sammult:
 
    Peaksid nägema `search_events`, `upcoming_events`, `get_event`.
 
-## Seadistus: käivita Dockeris (ise majutatud)
+### Dockeriga (või Podmaniga)
 
-See variant vajab ainult Dockerit. See käivitab konteineris sama Workeri
-kohalikult, nii et Cloudflare'i kontot ega kuutasu pole vaja.
+#### Eeldused
+
+- Docker või Podman (kasuta `docker compose` asemel `podman compose`).
+- Hostis pole Node'i ega npm-i vaja — need töötavad konteineri sees.
+
+#### Samm-sammuline juhend
 
 1. Ehita ja käivita konteiner.
-
-   ```bash
-   docker compose up --build
-   ```
+   - **Docker**
+      ```bash
+      docker compose up --build -d
+      ```
+   - **Podman**
+      ```bash
+      podman compose up --build -d
+      ```
 
 2. MCP lõpp-punkt on nüüd aadressil `http://localhost:8787/`. Testi seda sama
-   curl-käsuga nagu eespool.
+   curl-käsuga nagu Node'i sammudes eespool.
 
-3. Peata see Ctrl-C-ga või käivita taustal `docker compose up -d` ning peata
-   hiljem `docker compose down`.
+3. Vaata logisid käsuga `docker compose logs -f` ja peata see käsuga
+   `docker compose down`.
 
-Hosti pordi muutmiseks redigeeri `docker-compose.yml` failis `ports`
-vastendust, näiteks `"9000:8787"`, et teenindada pordil 9000.
+   Hosti pordi muutmiseks redigeeri `docker-compose.yml` failis `ports`
+   vastendust, näiteks `"9000:8787"`, et teenindada pordil 9000.
 
 Märkus: konteiner käivitab `wrangler dev`, mis on arendusserver. See sobib
 isiklikuks ja väikese tiimi ise majutamiseks. Avalikuks ja turvalisemaks
-juurutuseks eelista allpool kirjeldatud Cloudflare'i juurutusteed.
+juurutuseks eelista allpool kirjeldatud Cloudflare'i teed.
 
-## Ühenda MCP-klient
+### Kohaliku MCP-kliendi ühendamine
 
-Suuna oma klient serveri URL-ile. Kasuta `http://localhost:8787/` kohaliku või
-Dockeri jaoks või oma juurutatud `https://...workers.dev/` URL-i Cloudflare'i
-variandi jaoks.
+Suuna oma klient kohalikule serveri URL-ile `http://localhost:8787/`. Kohalik
+server vajab tavaliselt veidi käsitsi seadistamist, mis on iga kliendi kohta
+allpool näidatud.
 
-### Claude Code
+> **Märkus ChatGPT kohta:** ChatGPT ei saa ühenduda kohaliku serveriga. See
+> aktsepteerib ainult avalikku HTTPS-URL-i, seega `http://localhost:8787/` ei
+> tööta. Serveri kasutamiseks ChatGPT-ga juuruta see esmalt (vt
+> [Juuruta Cloudflare'i](#juuruta-cloudflarei)) ja ühenda avaliku `workers.dev`
+> URL-i kaudu.
+
+#### Claude Code
 
 ```bash
 claude mcp add --transport http eesti-ai http://localhost:8787/
@@ -121,7 +158,7 @@ claude mcp add --transport http eesti-ai http://localhost:8787/
 
 Seejärel kuva tööriistad käsuga `/mcp` Claude Code'i sees.
 
-### Cursor
+#### Cursor
 
 Lisa see faili `.cursor/mcp.json` (projekt) või `~/.cursor/mcp.json` (globaalne):
 
@@ -135,11 +172,10 @@ Lisa see faili `.cursor/mcp.json` (projekt) või `~/.cursor/mcp.json` (globaalne
 }
 ```
 
-### Claude Desktop
+#### Claude Desktop
 
-Claude Desktop ühendub kaugjuurdepääsuga HTTP-serveritega `mcp-remote` silla
-kaudu. Ava Settings, Developer, Edit Config, et avada
-`claude_desktop_config.json`.
+Claude Desktop jõuab kohaliku HTTP-serverini `mcp-remote` silla kaudu. Ava
+Settings → Developer → Edit Config, et avada `claude_desktop_config.json`.
 
 Selles failis on tavaliselt juba muud seaded. Ära kirjuta kogu faili üle. Lisa
 ainult `mcpServers` plokk. Kui sul on juba `mcpServers` plokk, lisa `eesti-ai`
@@ -155,10 +191,6 @@ Lisatav osa:
   }
 }
 ```
-
-Konteksti mõttes näeb terve konfiguratsioonifail koos selle plokiga umbes nii
-välja. Sinu teised võtmed erinevad, seega jäta enda omad alles ja lisa ainult
-`mcpServers`:
 
 > **Hoiatus: ära kopeeri allolevat näidet.** See on ainult illustratsiooniks,
 > näitamaks, kus `mcpServers` plokk teiste võtmete seas asub. `preferences`,
@@ -187,7 +219,7 @@ välja. Sinu teised võtmed erinevad, seega jäta enda omad alles ja lisa ainult
 Salvesta fail ja taaskäivita Claude Desktop. eesti.ai tööriistad ilmuvad
 tööriistade menüüsse.
 
-### MCP Inspector (testimiseks)
+#### MCP Inspector (testimiseks)
 
 ```bash
 npx @modelcontextprotocol/inspector
@@ -196,7 +228,9 @@ npx @modelcontextprotocol/inspector
 Inspectoris vali transport "Streamable HTTP", sisesta serveri URL ja proovi
 kolme tööriista.
 
-## Juuruta Cloudflare'i (valikuline)
+## Juuruta Cloudflare'i
+
+### Samm-sammuline juhend
 
 1. Logi üks kord sisse.
 
@@ -210,10 +244,24 @@ kolme tööriista.
    npm run deploy
    ```
 
-   Wrangler trükib avaliku
-   `https://eesti-ai-events-mcp.<sinu-alamdomeen>.workers.dev` URL-i. Kasuta
-   seda URL-i ülaltoodud kliendi konfiguratsioonis. Kohandatud domeen on
-   valikuline ja selle saab hiljem Cloudflare'i töölaual lisada.
+   Wrangler näitab avaliku
+   `https://eesti-ai-events-mcp.<sinu-alamdomeen>.workers.dev` URL-i. Kohandatud
+   domeen on valikuline ja selle saab hiljem Cloudflare'i töölaual lisada.
+
+### MCP-kliendi ühendamine
+
+Juurutatud serveril on avalik `https://...workers.dev/` URL, seega enamik
+kliente saab selle lisada otse oma konnektorite / integratsioonide liidese
+kaudu, ilma konfiguratsioonifaile redigeerimata:
+
+- **Claude Desktop / Claude.ai**: Settings, Connectors, Add custom connector ja
+  kleebi oma `workers.dev` URL.
+- **ChatGPT**: lisa kohandatud konnektorina (plaanidel, mis toetavad kaug-MCP
+  konnektoreid).
+
+Jaotise [Kohaliku MCP-kliendi ühendamine](#kohaliku-mcp-kliendi-ühendamine)
+CLI- ja konfiguratsioonimeetodid töötavad samuti — kasuta lihtsalt oma
+`workers.dev` URL-i `http://localhost:8787/` asemel.
 
 ## Märkused
 
@@ -222,4 +270,7 @@ Durable Objecte, seega Workers Paid plaani kulu ei teki. eesti.ai lõpp-punktid
 sisaldavad ainult eestikeelseid andmeid; `langcode: "en"` on lubatud, kuid
 tagastab alati tühja tulemuse.
 
-PS! Tegu on masintõlkega esialgsest skoobist.
+## Litsents
+
+MIT — vaba kasutada, muuta ja levitada, **ilma igasuguse garantiita; kasuta
+omal vastutusel**. Vaata [LICENSE](LICENSE).

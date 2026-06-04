@@ -2,6 +2,8 @@
   "name": "eesti-ai-events-mcp",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
+  "author": "Margus Rebane",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

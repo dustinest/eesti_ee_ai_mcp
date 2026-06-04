@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AiEvent, UpstreamDoc } from "./types.js";
 import { fetchEvents, type FetchEventsParams } from "./upstream.js";
+import { fetchEventDetail } from "./event-detail.js";
 import { toAiEvent } from "./normalize.js";
 
 const DEFAULT_PAGE_SIZE = 10; // verified live; used only as a pagination guard
@@ -17,6 +18,7 @@ export type ToolDef = {
 
 function eventsText(events: AiEvent[]): string {
   if (events.length === 0) return "No events found.";
+  // The url is the handle a model passes to get_event for the full writeup.
   return events.map((e) => `- ${e.title} (${e.startsAt}) | ${e.location} | ${e.url}`).join("\n");
 }
 
@@ -80,17 +82,36 @@ async function upcomingEvents(raw: unknown): Promise<ToolResult> {
 }
 
 // --- get_event ---
-const GetInput = z.object({ id: z.string().min(1) });
+// url must be a real https://eesti.ai page; the same gate is re-asserted at the fetch boundary.
+const GetInput = z.object({
+  url: z.string().refine((u) => {
+    try {
+      const x = new URL(u);
+      return x.protocol === "https:" && x.hostname === "eesti.ai";
+    } catch {
+      return false;
+    }
+  }, "url must be an https://eesti.ai event page"),
+});
 
 async function getEvent(raw: unknown): Promise<ToolResult> {
   const input = GetInput.parse(raw);
-  const MAX_PAGES = 5; // upcoming+past are small (verified <= 16 each window)
-  for (const dateRelative of ["upcoming", "past"] as const) {
-    const events = await collectEvents({ langcode: "et", dateRelative }, MAX_PAGES);
-    const found = events.find((e) => e.id === input.id);
-    if (found) return { structured: { event: found, found: true }, text: `${found.title} | ${found.startsAt} | ${found.url}` };
+  try {
+    const event = await fetchEventDetail(input.url);
+    const header = [event.dateTime, event.location, event.registration].filter(Boolean).join(" | ");
+    const lines = [event.title];
+    if (header) lines.push(header);
+    lines.push("", event.description, "", event.url);
+    return { structured: { event, found: true }, text: lines.join("\n") };
+  } catch (err) {
+    // Discriminate by name, not instanceof: these errors can cross a module/bundle/realm boundary.
+    const e = err as { name?: unknown; message?: unknown };
+    if (e?.name === "EventNotFoundError" || e?.name === "InvalidEventUrlError") {
+      const text = typeof e.message === "string" ? e.message : String(e.name);
+      return { structured: { event: null, found: false }, text, isError: true };
+    }
+    throw err;
   }
-  return { structured: { event: null, found: false }, text: `No event found with id ${input.id}`, isError: true };
 }
 
 function define(name: string, description: string, schema: z.ZodTypeAny, handler: ToolDef["handler"]): ToolDef {
@@ -100,7 +121,7 @@ function define(name: string, description: string, schema: z.ZodTypeAny, handler
 export const TOOLS: ToolDef[] = [
   define("search_events", "Search eesti.ai AI events by keyword and time window with pagination.", SearchInput, searchEvents),
   define("upcoming_events", "List the next upcoming eesti.ai AI events sorted by start time.", UpcomingInput, upcomingEvents),
-  define("get_event", "Fetch a single eesti.ai event by its canonical id.", GetInput, getEvent),
+  define("get_event", "Fetch the full details of a single eesti.ai event from its url (the url returned by search_events or upcoming_events).", GetInput, getEvent),
 ];
 
 export function getTool(name: string): ToolDef | undefined {

@@ -1,0 +1,8 @@
+# node_modules is platform specific. The host is likely macOS; the image is
+# linux, so dependencies must be installed inside the container.
+node_modules
+.wrangler
+.git
+.idea
+.DS_Store
+docs
